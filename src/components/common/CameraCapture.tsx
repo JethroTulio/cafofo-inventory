@@ -37,18 +37,38 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ value, onChange, l
     setIsCameraActive(false);
   };
 
+  // Função auxiliar de compressão de imagem para garantir sincronização rápida no Supabase
+  const compressAndSetImage = (imgSource: HTMLVideoElement | HTMLImageElement) => {
+    const canvas = document.createElement('canvas');
+    let width = (imgSource instanceof HTMLVideoElement ? imgSource.videoWidth : imgSource.width) || 640;
+    let height = (imgSource instanceof HTMLVideoElement ? imgSource.videoHeight : imgSource.height) || 480;
+
+    // Redimensionar para tamanho máximo otimizado de 800px (salva como imagem leve de ~90KB)
+    const maxDim = 800;
+    if (width > maxDim || height > maxDim) {
+      if (width > height) {
+        height = Math.round((height * maxDim) / width);
+        width = maxDim;
+      } else {
+        width = Math.round((width * maxDim) / height);
+        height = maxDim;
+      }
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.drawImage(imgSource, 0, 0, width, height);
+      const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+      onChange(compressedDataUrl);
+    }
+  };
+
   const capturePhoto = () => {
     if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth || 640;
-      canvas.height = videoRef.current.videoHeight || 480;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        onChange(dataUrl);
-        stopCamera();
-      }
+      compressAndSetImage(videoRef.current);
+      stopCamera();
     }
   };
 
@@ -58,7 +78,11 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({ value, onChange, l
       const reader = new FileReader();
       reader.onloadend = () => {
         if (typeof reader.result === 'string') {
-          onChange(reader.result);
+          const img = new Image();
+          img.onload = () => {
+            compressAndSetImage(img);
+          };
+          img.src = reader.result;
         }
       };
       reader.readAsDataURL(file);

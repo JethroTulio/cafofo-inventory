@@ -9,9 +9,119 @@ const STORAGE_KEY_CATEGORIAS = 'home_inv_categorias';
 const STORAGE_KEY_TAGS = 'home_inv_tags';
 const STORAGE_KEY_ITENS = 'home_inv_itens';
 
+// Gerador e validador de UUIDs V4 válidos para compatibilidade total com PostgreSQL/Supabase
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function isValidUUID(id?: string): boolean {
+  if (!id) return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(id);
+}
+
 class InventoryDatabase {
-  private isCloudActive(): boolean {
+  public isCloudActive(): boolean {
     return !!initSupabase();
+  }
+
+  // --- MIGRAÇÃO AUTOMÁTICA DE IDs ANTIGOS PARA UUIDs VÁLIDOS DE BANCO RELACIONAL ---
+  private migrateLegacyIds() {
+    let meged = false;
+    const legacyIdMap = new Map<string, string>();
+
+    const getOrMigrateId = (oldId: string): string => {
+      if (isValidUUID(oldId)) return oldId;
+      if (!legacyIdMap.has(oldId)) {
+        legacyIdMap.set(oldId, generateUUID());
+      }
+      return legacyIdMap.get(oldId)!;
+    };
+
+    // 1. Locais
+    const locaisRaw = localStorage.getItem(STORAGE_KEY_LOCAIS);
+    if (locaisRaw) {
+      const locais: Local[] = JSON.parse(locaisRaw);
+      const migratedLocais = locais.map(l => {
+        const newId = getOrMigrateId(l.id);
+        return { ...l, id: newId };
+      });
+      localStorage.setItem(STORAGE_KEY_LOCAIS, JSON.stringify(migratedLocais));
+    }
+
+    // 2. Ambientes
+    const defaultLocalId = INITIAL_LOCAIS[0].id;
+    const ambientesRaw = localStorage.getItem(STORAGE_KEY_AMBIENTES);
+    if (ambientesRaw) {
+      const ambientes: Ambiente[] = JSON.parse(ambientesRaw);
+      const migratedAmbientes = ambientes.map(a => {
+        const newId = getOrMigrateId(a.id);
+        const newLocalId = getOrMigrateId(a.local_id || defaultLocalId);
+        return { ...a, id: newId, local_id: newLocalId };
+      });
+      localStorage.setItem(STORAGE_KEY_AMBIENTES, JSON.stringify(migratedAmbientes));
+    }
+
+    // 3. Containers
+    const containersRaw = localStorage.getItem(STORAGE_KEY_CONTAINERS);
+    if (containersRaw) {
+      const containers: Container[] = JSON.parse(containersRaw);
+      const migratedContainers = containers.map(c => {
+        const newId = getOrMigrateId(c.id);
+        const newAmbId = getOrMigrateId(c.ambiente_id);
+        return { ...c, id: newId, ambiente_id: newAmbId };
+      });
+      localStorage.setItem(STORAGE_KEY_CONTAINERS, JSON.stringify(migratedContainers));
+    }
+
+    // 4. Categorias
+    const categoriasRaw = localStorage.getItem(STORAGE_KEY_CATEGORIAS);
+    if (categoriasRaw) {
+      const categorias: Categoria[] = JSON.parse(categoriasRaw);
+      const migratedCategorias = categorias.map(c => {
+        const newId = getOrMigrateId(c.id);
+        return { ...c, id: newId };
+      });
+      localStorage.setItem(STORAGE_KEY_CATEGORIAS, JSON.stringify(migratedCategorias));
+    }
+
+    // 5. Tags
+    const tagsRaw = localStorage.getItem(STORAGE_KEY_TAGS);
+    if (tagsRaw) {
+      const tags: Tag[] = JSON.parse(tagsRaw);
+      const migratedTags = tags.map(t => {
+        const newId = getOrMigrateId(t.id);
+        return { ...t, id: newId };
+      });
+      localStorage.setItem(STORAGE_KEY_TAGS, JSON.stringify(migratedTags));
+    }
+
+    // 6. Itens
+    const itensRaw = localStorage.getItem(STORAGE_KEY_ITENS);
+    if (itensRaw) {
+      const itens: Item[] = JSON.parse(itensRaw);
+      const migratedItens = itens.map(i => {
+        const newId = getOrMigrateId(i.id);
+        const newCntId = getOrMigrateId(i.container_id);
+        const newCatId = i.categoria_id ? getOrMigrateId(i.categoria_id) : undefined;
+        const newTagIds = (i.tag_ids || []).map(tid => getOrMigrateId(tid));
+        return {
+          ...i,
+          id: newId,
+          container_id: newCntId,
+          categoria_id: newCatId,
+          tag_ids: newTagIds,
+        };
+      });
+      localStorage.setItem(STORAGE_KEY_ITENS, JSON.stringify(migratedItens));
+    }
   }
 
   // --- INICIALIZAÇÃO E MIGRAÇÃO AUTOMÁTICA DE DADOS ---
@@ -19,28 +129,9 @@ class InventoryDatabase {
     if (!localStorage.getItem(STORAGE_KEY_LOCAIS)) {
       localStorage.setItem(STORAGE_KEY_LOCAIS, JSON.stringify(INITIAL_LOCAIS));
     }
-
-    const defaultLocalId = INITIAL_LOCAIS[0].id; // '11111111-0000-4000-8000-000000000001'
-    const ambientesRaw = localStorage.getItem(STORAGE_KEY_AMBIENTES);
-
-    if (!ambientesRaw) {
+    if (!localStorage.getItem(STORAGE_KEY_AMBIENTES)) {
       localStorage.setItem(STORAGE_KEY_AMBIENTES, JSON.stringify(INITIAL_AMBIENTES));
-    } else {
-      // MIGRAÇÃO AUTOMÁTICA: Garantir que todos os ambientes preexistentes tenham local_id
-      const existingAmbientes: Ambiente[] = JSON.parse(ambientesRaw);
-      let needsMigration = false;
-      const migrated = existingAmbientes.map(a => {
-        if (!a.local_id) {
-          needsMigration = true;
-          return { ...a, local_id: defaultLocalId };
-        }
-        return a;
-      });
-      if (needsMigration) {
-        localStorage.setItem(STORAGE_KEY_AMBIENTES, JSON.stringify(migrated));
-      }
     }
-
     if (!localStorage.getItem(STORAGE_KEY_CONTAINERS)) {
       localStorage.setItem(STORAGE_KEY_CONTAINERS, JSON.stringify(INITIAL_CONTAINERS));
     }
@@ -53,6 +144,7 @@ class InventoryDatabase {
     if (!localStorage.getItem(STORAGE_KEY_ITENS)) {
       localStorage.setItem(STORAGE_KEY_ITENS, JSON.stringify(INITIAL_ITENS));
     }
+    this.migrateLegacyIds();
   }
 
   public resetToSeedData() {
@@ -62,6 +154,95 @@ class InventoryDatabase {
     localStorage.setItem(STORAGE_KEY_CATEGORIAS, JSON.stringify(INITIAL_CATEGORIAS));
     localStorage.setItem(STORAGE_KEY_TAGS, JSON.stringify(INITIAL_TAGS));
     localStorage.setItem(STORAGE_KEY_ITENS, JSON.stringify(INITIAL_ITENS));
+  }
+
+  // ==========================================
+  // SINCRONIZAÇÃO FORÇADA: LOCAL -> NUVEM SUPABASE
+  // ==========================================
+  public async syncAllLocalToCloud(): Promise<{
+    success: boolean;
+    message: string;
+    counts?: { locais: number; ambientes: number; containers: number; categorias: number; tags: number; itens: number };
+  }> {
+    const supabase = initSupabase();
+    if (!supabase) {
+      return { success: false, message: 'Supabase não está configurado. Insira a URL e a Anon Key nas Configurações de Nuvem.' };
+    }
+
+    try {
+      this.initLocalData();
+
+      const locais: Local[] = JSON.parse(localStorage.getItem(STORAGE_KEY_LOCAIS) || '[]');
+      const ambientes: Ambiente[] = JSON.parse(localStorage.getItem(STORAGE_KEY_AMBIENTES) || '[]');
+      const containers: Container[] = JSON.parse(localStorage.getItem(STORAGE_KEY_CONTAINERS) || '[]');
+      const categorias: Categoria[] = JSON.parse(localStorage.getItem(STORAGE_KEY_CATEGORIAS) || '[]');
+      const tags: Tag[] = JSON.parse(localStorage.getItem(STORAGE_KEY_TAGS) || '[]');
+      const itens: Item[] = JSON.parse(localStorage.getItem(STORAGE_KEY_ITENS) || '[]');
+
+      // 1. Upsert Locais
+      if (locais.length > 0) {
+        const { error } = await supabase.from('locais').upsert(locais);
+        if (error) throw new Error(`Erro ao enviar Locais: ${error.message}`);
+      }
+
+      // 2. Upsert Ambientes
+      if (ambientes.length > 0) {
+        const { error } = await supabase.from('ambientes').upsert(ambientes);
+        if (error) throw new Error(`Erro ao enviar Ambientes: ${error.message}`);
+      }
+
+      // 3. Upsert Containers
+      if (containers.length > 0) {
+        const { error } = await supabase.from('containers').upsert(containers);
+        if (error) throw new Error(`Erro ao enviar Containers: ${error.message}`);
+      }
+
+      // 4. Upsert Categorias
+      if (categorias.length > 0) {
+        const { error } = await supabase.from('categorias').upsert(categorias);
+        if (error) throw new Error(`Erro ao enviar Categorias: ${error.message}`);
+      }
+
+      // 5. Upsert Tags
+      if (tags.length > 0) {
+        const { error } = await supabase.from('tags').upsert(tags);
+        if (error) throw new Error(`Erro ao enviar Tags: ${error.message}`);
+      }
+
+      // 6. Upsert Itens & Pivot Tags
+      if (itens.length > 0) {
+        for (const item of itens) {
+          const { tag_ids, ...itemData } = item;
+          const { error: itemError } = await supabase.from('itens').upsert(itemData);
+          if (itemError) throw new Error(`Erro ao enviar Item "${item.nome}": ${itemError.message}`);
+
+          if (tag_ids && tag_ids.length > 0) {
+            await supabase.from('item_tags').delete().eq('item_id', item.id);
+            const rows = tag_ids.map(tag_id => ({ item_id: item.id, tag_id }));
+            await supabase.from('item_tags').insert(rows);
+          }
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Todos os seus dados e fotos locais foram sincronizados com o Supabase com sucesso!',
+        counts: {
+          locais: locais.length,
+          ambientes: ambientes.length,
+          containers: containers.length,
+          categorias: categorias.length,
+          tags: tags.length,
+          itens: itens.length
+        }
+      };
+    } catch (err: any) {
+      console.error('Erro na sincronização:', err);
+      return {
+        success: false,
+        message: err.message || 'Erro inesperado durante a sincronização com o Supabase.'
+      };
+    }
   }
 
   // ==========================================
@@ -81,7 +262,7 @@ class InventoryDatabase {
 
   async saveLocal(local: Omit<Local, 'id'> & { id?: string }): Promise<Local> {
     const supabase = initSupabase();
-    const id = local.id || 'loc-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const id = isValidUUID(local.id) ? local.id! : generateUUID();
     const newLocal: Local = {
       ...local,
       id,
@@ -89,7 +270,8 @@ class InventoryDatabase {
     };
 
     if (supabase) {
-      await supabase.from('locais').upsert(newLocal);
+      const { error } = await supabase.from('locais').upsert(newLocal);
+      if (error) console.error('Erro ao salvar local no Supabase:', error);
     }
 
     this.initLocalData();
@@ -135,7 +317,7 @@ class InventoryDatabase {
     const supabase = initSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('ambientes').select('*').order('nome');
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         return data.map((a: any) => ({
           ...a,
           local_id: a.local_id || defaultLocalId
@@ -157,7 +339,7 @@ class InventoryDatabase {
 
   async saveAmbiente(ambiente: Omit<Ambiente, 'id'> & { id?: string }): Promise<Ambiente> {
     const supabase = initSupabase();
-    const id = ambiente.id || 'amb-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const id = isValidUUID(ambiente.id) ? ambiente.id! : generateUUID();
     const locais = await this.getLocais();
     const defaultLocalId = locais[0]?.id || '11111111-0000-4000-8000-000000000001';
 
@@ -169,7 +351,8 @@ class InventoryDatabase {
     };
 
     if (supabase) {
-      await supabase.from('ambientes').upsert(newAmbiente);
+      const { error } = await supabase.from('ambientes').upsert(newAmbiente);
+      if (error) console.error('Erro ao salvar ambiente no Supabase:', error);
     }
 
     this.initLocalData();
@@ -212,7 +395,7 @@ class InventoryDatabase {
     const supabase = initSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('containers').select('*').order('nome');
-      if (!error && data) return data as Container[];
+      if (!error && data && data.length > 0) return data as Container[];
     }
     this.initLocalData();
     const items = JSON.parse(localStorage.getItem(STORAGE_KEY_CONTAINERS) || '[]');
@@ -221,7 +404,7 @@ class InventoryDatabase {
 
   async saveContainer(container: Omit<Container, 'id'> & { id?: string }): Promise<Container> {
     const supabase = initSupabase();
-    const id = container.id || 'cnt-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const id = isValidUUID(container.id) ? container.id! : generateUUID();
     const newContainer: Container = {
       ...container,
       id,
@@ -229,7 +412,8 @@ class InventoryDatabase {
     };
 
     if (supabase) {
-      await supabase.from('containers').upsert(newContainer);
+      const { error } = await supabase.from('containers').upsert(newContainer);
+      if (error) console.error('Erro ao salvar container no Supabase:', error);
     }
 
     this.initLocalData();
@@ -267,7 +451,7 @@ class InventoryDatabase {
     const supabase = initSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('categorias').select('*').order('nome');
-      if (!error && data) return data as Categoria[];
+      if (!error && data && data.length > 0) return data as Categoria[];
     }
     this.initLocalData();
     return JSON.parse(localStorage.getItem(STORAGE_KEY_CATEGORIAS) || '[]');
@@ -277,7 +461,7 @@ class InventoryDatabase {
     const supabase = initSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('tags').select('*').order('nome');
-      if (!error && data) return data as Tag[];
+      if (!error && data && data.length > 0) return data as Tag[];
     }
     this.initLocalData();
     return JSON.parse(localStorage.getItem(STORAGE_KEY_TAGS) || '[]');
@@ -290,7 +474,7 @@ class InventoryDatabase {
     const supabase = initSupabase();
     if (supabase) {
       const { data, error } = await supabase.from('itens').select('*, item_tags(tag_id)').order('created_at', { ascending: false });
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
         return data.map((i: any) => ({
           ...i,
           tag_ids: i.item_tags ? i.item_tags.map((t: any) => t.tag_id) : []
@@ -303,7 +487,7 @@ class InventoryDatabase {
 
   async saveItem(item: Omit<Item, 'id'> & { id?: string }): Promise<Item> {
     const supabase = initSupabase();
-    const id = item.id || 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4);
+    const id = isValidUUID(item.id) ? item.id! : generateUUID();
     const newItem: Item = {
       ...item,
       id,
@@ -315,11 +499,14 @@ class InventoryDatabase {
 
     if (supabase) {
       const { tag_ids, ...itemData } = newItem;
-      await supabase.from('itens').upsert(itemData);
+      const { error: itemErr } = await supabase.from('itens').upsert(itemData);
+      if (itemErr) console.error('Erro ao salvar item no Supabase:', itemErr);
+
       await supabase.from('item_tags').delete().eq('item_id', id);
       if (tag_ids && tag_ids.length > 0) {
         const rows = tag_ids.map(tag_id => ({ item_id: id, tag_id }));
-        await supabase.from('item_tags').insert(rows);
+        const { error: tagErr } = await supabase.from('item_tags').insert(rows);
+        if (tagErr) console.error('Erro ao salvar item_tags no Supabase:', tagErr);
       }
     }
 
