@@ -54,15 +54,23 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Linha Principal do Cabeçalho */}
         <div className="flex items-center justify-between gap-2">
 
-          {/* Logo & Marca Oficial (Vertical compacta: Cafofo em cima, Inventory embaixo) */}
-          <div className="flex items-center gap-2 cursor-pointer shrink-0" onClick={() => setActiveView('dashboard')}>
-            <div className="p-2 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-xl text-white shadow-md shadow-brand-500/20">
-              <Package className="w-5 h-5" />
+          {/* Logo & Marca Oficial (Destacando "Cafofo" em fonte grande com "INVENTORY • by Tull_LAB" em sub-linha) */}
+          <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => setActiveView('dashboard')}>
+            <div className="p-2 sm:p-2.5 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-2xl text-white shadow-md shadow-brand-500/20">
+              <Package className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight">Cafofo</span>
-              <span className="text-[10px] sm:text-xs font-bold text-brand-600 tracking-widest uppercase">Inventory</span>
-              <span className="text-[8px] text-slate-400 font-semibold tracking-wider uppercase">by Tull_LAB</span>
+            <div className="flex flex-col justify-center leading-none">
+              <span className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight block">
+                Cafofo
+              </span>
+              <div className="flex items-center gap-1 mt-0.5">
+                <span className="text-[10px] sm:text-xs font-black text-brand-600 tracking-widest uppercase">
+                  Inventory
+                </span>
+                <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider">
+                  • by Tull_LAB
+                </span>
+              </div>
             </div>
           </div>
 
