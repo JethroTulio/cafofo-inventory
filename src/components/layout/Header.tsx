@@ -54,23 +54,23 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Linha Principal do Cabeçalho */}
         <div className="flex items-center justify-between gap-2">
 
-          {/* Logo & Marca Oficial (Destacando "Cafofo" em fonte grande com "INVENTORY • by Tull_LAB" em sub-linha) */}
+          {/* Logo & Marca Oficial (Linha superior: Cafofo Inventory com degradê sofisticado | Linha inferior: Powered by Tull_LAB) */}
           <div className="flex items-center gap-2.5 cursor-pointer shrink-0" onClick={() => setActiveView('dashboard')}>
-            <div className="p-2 sm:p-2.5 bg-gradient-to-br from-brand-600 to-indigo-600 rounded-2xl text-white shadow-md shadow-brand-500/20">
+            <div className="p-2 sm:p-2.5 bg-gradient-to-br from-brand-600 via-indigo-600 to-brand-700 rounded-2xl text-white shadow-md shadow-brand-500/20">
               <Package className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
             <div className="flex flex-col justify-center leading-none">
-              <span className="text-lg sm:text-2xl font-black text-slate-900 tracking-tight block">
-                Cafofo
-              </span>
-              <div className="flex items-center gap-1 mt-0.5">
-                <span className="text-[10px] sm:text-xs font-black text-brand-600 tracking-widest uppercase">
+              <div className="text-base sm:text-xl font-black tracking-tight flex items-center gap-1.5">
+                <span className="bg-gradient-to-r from-brand-600 via-indigo-600 to-indigo-700 text-transparent bg-clip-text">
+                  Cafofo
+                </span>
+                <span className="text-slate-900 font-black">
                   Inventory
                 </span>
-                <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase tracking-wider">
-                  • by Tull_LAB
-                </span>
               </div>
+              <span className="text-[9px] sm:text-[10px] text-slate-400 font-bold tracking-wider uppercase mt-1">
+                Powered by <span className="text-indigo-600 font-extrabold">Tull_LAB</span>
+              </span>
             </div>
           </div>
 
